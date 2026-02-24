@@ -1,97 +1,154 @@
-# 上游同步与版本管理简明指南
+这是一份为你量身定制的**《OpenClaw 二次开发与版本升级标准工作流 (SOP)》**。我将前面讨论的初始构建、分支规范以及“二开代码与官方新版本融合”的核心步骤，整合成了一份可以直接作为团队内部开发规范的完整指南。
 
-## 目标
+---
 
-- 方便二次开发，同时可选保持开发版（upstream/main）或发布版（标签）的一致性。
+### 👑 核心原则：上游只读，基于 Tag 部署，隔离二开代码。
 
-## 日常同步 main（追踪开发版）
+### 第一阶段：初始仓库基建 (只需执行一次)
 
-- 确认工作区干净或已提交：`git status`.
-- 拉取上游：`git fetch upstream`.
-- 变基本地 main：`git rebase upstream/main`.
-- 按需检查：`pnpm check` 或 `pnpm test`.
-- 推送到 fork：`git push --force-with-lease origin main`.
-
-## 功能分支工作流
-
-- 基于最新 main 开分支：`git checkout -b feature/x main`.
-- 开发时用 `scripts/committer "<msg>" <files...>` 小步提交。
-- 定期对齐上游：在分支上执行 `git fetch upstream && git rebase upstream/main`.
-- 推送备份/协作：`git push --force-with-lease origin feature/x`.
-
-## 只跟踪发布版本的做法
-
-- 始终以标签为基线：`git fetch upstream --tags` 后检出发布标签，如 `git checkout v2026.2.22`（或 `git switch --detach v2026.2.22`）。
-- 在发布版上开发：`git checkout -b feature/x v2026.2.22`，后续只对齐新发布标签，不与 `upstream/main` 变基。
-- 更新到最新发布：`git branch -f stable v2026.2.xx && git push --force-with-lease origin stable`，工作分支以更新后的 `stable` 为基线重新切分支或变基。
-- 不混用开发主分支：避免把 `upstream/main` 合入发布跟踪分支。
-
-## 稳定发布长期跟踪（推荐稳定性）
-
-- 目标：`stable` 分支始终指向“最新正式发布标签”（排除 beta），保证可复现；所有开发分支从 `stable` 派生。
-- 适用：不想引入未发布改动，只吃正式版；便于回溯和审计。
-- 发布标签定义：`vYYYY.M.D` 系列；如要严格跳过 beta，用过滤命令排除 `beta`。
-
-### 初次建立
-
-1. 拉标签：`git fetch upstream --tags`
-2. 取最新正式标签：`latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | rg -v beta | head -n1)`
-3. 创建/快进 `stable`：`git branch -f stable "$latest"`
-4. 推送到 fork：`git push --force-with-lease origin stable`
-5. 记录当前发布哈希（可选）：`git rev-parse "$latest"` 便于审计或防重打标签
-
-### 日常更新（发现新发布时）
-
-1. `git fetch upstream --tags`
-2. 获取最新正式标签（同上命令）
-3. 快进 `stable`：`git branch -f stable "$latest"`
-4. 推送：`git push --force-with-lease origin stable`
-5. 验证：`git describe --tags --exact-match stable || git rev-parse stable`
-
-### 开发与升级
-
-- 新开发分支：`git checkout -b feature/x stable`
-- 新发布出现后：
-  - 更稳妥：基于更新后的 `stable` 重建分支。
-  - 或：在原分支上 `git rebase stable`。
-- 禁止把 `upstream/main` 直接合入/变基到 `stable`，避免未发布改动进入稳定线。
-
-### 已有分支如何跟随新标签
-
-- `stable` 快进不会自动带上你旧分支的提交。
-- 方案 1（推荐）：在原分支上执行 `git fetch upstream --tags`（确保标签最新），`git rebase stable`，把你的提交移动到新标签之上，保持线性历史。
-- 方案 2（安全搬运）：从新 `stable` 开新分支 `git checkout -b feature/x-new stable`，对旧分支的提交使用 `git cherry-pick <old-commit-range>`；适合冲突多或想保留旧分支备份。
-- 方案 3（暂不升级）：让旧分支留在旧标签基线；需要时再用方案 1/2 搬运。
-- 任一方案后：跑必要测试，再 `git push --force-with-lease origin <branch>`。
-
-### 防篡改与回滚（可选）
-
-- 镜像标签到 fork：`git tag fork-$latest $latest && git push --force-with-lease origin fork-$latest`
-- 记录哈希到文件（示例）：`git rev-parse "$latest" >> RELEASE_HASHES.md`
-- 如需回滚 `stable` 到旧发布：`git branch -f stable <旧标签或哈希> && git push --force-with-lease origin stable`
-
-### 自动化示例（跳过 beta）
+在开始任何开发前，必须将你的本地代码库与官方建立“血脉联系”。
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-git fetch upstream --tags
-latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | rg -v beta | head -n1)
-[ -z "$latest" ] && { echo "no release tag found"; exit 0; }
-git branch -f stable "$latest"
-git push --force-with-lease origin stable
-git describe --tags --exact-match stable || git rev-parse stable
+# 1. 克隆你 Fork 后的私有仓库
+git clone https://github.com/你的账号/openclaw.git
+cd openclaw
+
+# 2. 绑定 OpenClaw 官方仓库作为“上游 (upstream)”
+git remote add upstream https://github.com/openclaw/openclaw.git
+
+# 3. 验证绑定状态 (应显示 origin 和 upstream 各两个地址)
+git remote -v
+
 ```
 
-## 常用速查
+### 第二阶段：确立三级分支模型
 
-- 分支分歧：`git status -sb`.
-- 最近提交：`git log --oneline -n 5`.
-- 强制更新 fork：`git push --force-with-lease origin main`.
-- 变基当前分支到上游：`git fetch upstream && git rebase upstream/main`.
+彻底放弃在 `main` 分支上一把梭的习惯，严格按照以下职能划分分支：
 
-## 注意事项
+1. **`main` 分支 (搬运工)：**
 
-- 不用 `git reset --hard`、`git pull --rebase --autostash`，防止丢失工作。
-- push 一律用 `--force-with-lease`，避免覆盖他人更新。
-- 推前检查未跟踪文件，避免私密/大文件误推。
+- **作用：** 纯粹用于同步官方最前沿的代码。**绝对不要在此分支上手动改代码或用于生产环境。**
+
+2. **`production` 分支 (生产护城河)：**
+
+- **作用：** 服务器实际运行的分支。它必须基于官方某个**稳定的 Tag（标签）**创建。
+- **创建命令：** `git checkout -b production tags/v1.0.0`（假设官方当前稳定版是 v1.0.0）。
+
+3. **`feature/xxx` 或 `custom` 分支 (二次开发区)：**
+
+- **作用：** 如果你需要改底层逻辑，基于 `production` 拉出此分支进行二开，测试无误后再合并回 `production`。
+
+```bash
+# ==========================================
+# 1. 初始化 main 分支（保持纯净，紧跟官方）
+# ==========================================
+# 确保你当前在 main 分支
+git checkout main
+# 拉取官方最新代码并合并，确保你的 main 是最新的官方原始状态
+git fetch upstream
+git merge upstream/main
+# 顺手推送到你自己的 GitHub 仓库备份
+git push origin main
+
+# ==========================================
+# 2. 初始化 production 分支（生产护城河）
+# ==========================================
+# 极其关键：获取官方所有的 Release 标签 (Tags)
+git fetch upstream --tags
+
+# 查看分支
+git tag --sort=-creatordate | head
+
+# 假设你查阅官方 Release 发现当前最稳的版本是 v1.0.0
+# 直接基于这个 Tag 创建并切换到 production 分支
+git checkout -b production tags/v1.0.0
+
+# 此时，修改 docker-compose.yml，将镜像版本锁定
+# 例如将 image: openclaw/backend:latest 改为 image: openclaw/backend:v1.0.0
+# 提交这个锁定版本的修改
+git add docker-compose.yml
+git commit -m "chore: 初始化生产环境，锁定镜像至 v1.0.0"
+
+# ==========================================
+# 3. 初始化 custom / feature 分支（二次开发区）
+# ==========================================
+# 确保你是从稳定的 production 分支拉出二开分支，而不是从 main 拉！
+git checkout production
+
+# 创建并切换到你的专属开发分支（比如你要加一个 B2B 的数据清洗逻辑）
+git checkout -b custom/data-cleaner
+
+# --- 在这里尽情修改你的二次开发代码 ---
+
+# 修改完毕且本地测试跑通后，提交你的二开代码
+git add .
+git commit -m "feat: 增加 B2B 专属数据清洗中间件"
+
+# 最后，将二开代码合并回你的生产分支，准备发布到服务器
+git checkout production
+git merge custom/data-cleaner
+git push origin production
+```
+
+---
+
+### 第三阶段：带二开代码的安全升级流 (核心实操 SOP)
+
+假设你的 `production` 分支中已经包含了你辛辛苦苦写的二次开发代码。此时官方发布了重磅更新 `v1.2.0`。请严格按以下 5 步执行安全升级：
+
+#### Step 1: 制作“后悔药” (备份当前稳定版)
+
+```bash
+git checkout production
+git branch backup-prod-20260224  # 以当天日期命名，万一搞砸了一秒切回
+
+```
+
+#### Step 2: 拉取官方最新“里程碑”
+
+```bash
+# 获取官方所有最新的 Release Tags（不要拉取 main 分支）
+git fetch upstream --tags
+
+```
+
+#### Step 3: 融合官方新版本 (Merge 策略)
+
+```bash
+# 确保当前在 production 分支
+git checkout production
+
+# 将官方的新版本代码，合并到你带有二开代码的分支中
+git merge tags/v1.2.0
+
+```
+
+#### Step 4: 解决合并冲突 (如有)
+
+- **如果自动合并成功：** 终端提示 `Merge made by the 'ort' strategy`，直接进入下一步。
+- **如果提示代码冲突 (Merge conflict)：**
+
+1. 打开编辑器（如 VS Code），全局搜索 `<<<<<<<`。
+2. 手动对比你的二开逻辑与官方新逻辑，谨慎决定保留哪一部分。
+3. 保存文件，执行 `git add .` 和 `git commit -m "chore: 解决升级 v1.2.0 时的冲突"`。
+
+#### Step 5: 重新构建与防腐测试
+
+```bash
+# 重新编译底层 Docker 镜像
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+
+```
+
+- **终极测试：** 回到 n8n 画布，手动执行你的 `Tool_Search_SOP_OpenClaw` 子工作流。确认大模型依然能拿到格式正确的 SOP 文本。测试通过后，即可删除 Step 1 的备份分支。
+
+---
+
+### 💡 架构师的长远忠告
+
+为了让未来的每一次升级都如同丝般顺滑，请尽量遵守**“非侵入式二开”**原则：
+如果你修改代码仅仅是为了**清洗数据**、**转换 JSON 格式**或者**预处理查询词**，**请立刻停止修改 OpenClaw 源码！** 把这些逻辑全部转移到 n8n 的 `Code Node`（代码节点）或者子工作流里去处理。只有让 OpenClaw 保持尽可能的“纯洁”，你的升级成本才会降到最低。
+
+这份合并后的 SOP 是否清晰？接下来，我们是着手准备 **n8n 侧的子工作流搭建**，还是先设计一下用来给你们**产品团队填写的“SOP 知识收集表”模板**？
