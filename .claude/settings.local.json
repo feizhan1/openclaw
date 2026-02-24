@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "WebSearch",
+      "Bash(pnpm install)",
+      "Bash(node --version)",
+      "Bash(source:*)",
+      "Bash(nvm use:*)",
+      "Bash(pnpm build:*)",
+      "Bash(python3:*)",
+      "Bash(xargs -I {} bash -c 'echo \"\"\"\"=== {} ===\"\"\"\"; head -10 \"\"\"\"{}\"\"\"\"')",
+      "Bash(pnpm openclaw:*)",
+      "Bash(nvm ls-remote:*)",
+      "Bash(nvm install:*)",
+      "Bash(echo:*)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(sqlite3:*)",
+      "Bash(export NVM_DIR=$HOME/.nvm)",
+      "Bash([ -s $NVM_DIR/nvm.sh ])",
+      "Bash(. $NVM_DIR/nvm.sh)",
+      "Bash(du:*)",
+      "Bash(jq:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}
