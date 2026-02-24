@@ -2,43 +2,54 @@
 
 ## 目标
 
-- 长期跟踪 `upstream/main`，保持本地与个人 fork (`origin`) 同步，减少冲突与历史污染。
+- 方便二次开发，同时可选保持开发版（upstream/main）或发布版（标签）的一致性。
 
-## 日常同步 main（建议每次开发前后）
+## 日常同步 main（追踪开发版）
 
 - 确认工作区干净或已提交：`git status`.
 - 拉取上游：`git fetch upstream`.
 - 变基本地 main：`git rebase upstream/main`.
-- 按需快速检查：`pnpm check` 或 `pnpm test`.
+- 按需检查：`pnpm check` 或 `pnpm test`.
 - 推送到 fork：`git push --force-with-lease origin main`.
 
 ## 功能分支工作流
 
-- 基于最新 main 开分支：`git checkout -b feature/x`.
+- 基于最新 main 开分支：`git checkout -b feature/x main`.
 - 开发时用 `scripts/committer "<msg>" <files...>` 小步提交。
-- 准备提交 PR 前：`git fetch upstream && git rebase upstream/main`.
-- 解决冲突、复测后推送：`git push --force-with-lease origin feature/x`.
-- PR 目标通常指向 `upstream/main`，除非另有要求。
-
-## 冲突处理
-
-- 变基冲突：解决后 `git add <file> && git rebase --continue`.
-- 实在搞不定：`git rebase --abort` 回到变基前状态再评估。
-- 避免使用 `git stash`（团队约束）；通过提交保留工作。
-
-## 标签与版本
-
-- 更新标签：`git fetch upstream --tags`.
-- 查看标签提交：`git rev-list -n 1 v2026.2.22`.
-- 基于标签建只读分支：`git branch release/v2026.2.22 v2026.2.22`.
+- 定期对齐上游：在分支上执行 `git fetch upstream && git rebase upstream/main`.
+- 推送备份/协作：`git push --force-with-lease origin feature/x`.
 
 ## 只跟踪发布版本的做法
 
-- 始终以标签为基线：`git fetch upstream --tags` 后，检出需要的发布标签，如 `git checkout v2026.2.22`（或 `git switch --detach v2026.2.22`）。
-- 如果需要在发布版本上开发，基于标签新建分支：`git checkout -b feature/x v2026.2.22`，后续仅与后续发布标签对齐，不与 `upstream/main` 变基。
-- 更新到最新发布时，创建/快进你的稳定分支到最新标签：`git branch -f stable v2026.2.23`，然后在本地用 `git checkout stable` 或让工作分支以新标签为基线重新分支。
-- 不混用开发主分支：避免将 `upstream/main` 直接合并到你的发布跟踪分支，减少引入未发布变化。
-- 同步到 fork：若需要共享发布跟踪分支，`git push --force-with-lease origin stable`（或对应分支名）。
+- 始终以标签为基线：`git fetch upstream --tags` 后检出发布标签，如 `git checkout v2026.2.22`（或 `git switch --detach v2026.2.22`）。
+- 在发布版上开发：`git checkout -b feature/x v2026.2.22`，后续只对齐新发布标签，不与 `upstream/main` 变基。
+- 更新到最新发布：`git branch -f stable v2026.2.xx && git push --force-with-lease origin stable`，工作分支以更新后的 `stable` 为基线重新切分支或变基。
+- 不混用开发主分支：避免把 `upstream/main` 合入发布跟踪分支。
+
+## 稳定发布长期跟踪（推荐稳定性）
+
+- 目标：`stable` 分支始终指向最新发布标签，保证可复现；所有开发分支从 `stable` 派生。
+- 初次建立：
+  - `git fetch upstream --tags`
+  - `git branch -f stable <最新发布标签>`
+  - `git push --force-with-lease origin stable`
+- 日常更新（上游有新发布时）：
+  - `git fetch upstream --tags`
+  - 确认最新标签，如 `latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | head -n1)`
+  - 快进 `stable`：`git branch -f stable "$latest"`
+  - 推送：`git push --force-with-lease origin stable`
+- 开发基线：`git checkout -b feature/x stable`；跟进新发布时，切新分支或将现有分支变基到更新后的 `stable`。
+- 防篡改（可选）：在 fork 上再打镜像标签（如 `fork-v2026.2.23`）指向同一 commit，防上游重打标签。
+- 自动化示例（本地脚本，定时执行）：
+  ```bash
+  #!/usr/bin/env bash
+  set -euo pipefail
+  git fetch upstream --tags
+  latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | head -n1)
+  [ -z "$latest" ] && { echo "no tag found"; exit 1; }
+  git branch -f stable "$latest"
+  git push --force-with-lease origin stable
+  ```
 
 ## 常用速查
 
@@ -50,5 +61,5 @@
 ## 注意事项
 
 - 不用 `git reset --hard`、`git pull --rebase --autostash`，防止丢失工作。
-- push 时总用 `--force-with-lease`，避免覆盖他人更新。
-- 推前检查未跟踪文件，避免私密/大文件误推。**\* End Patch**");
+- push 一律用 `--force-with-lease`，避免覆盖他人更新。
+- 推前检查未跟踪文件，避免私密/大文件误推。
