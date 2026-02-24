@@ -28,28 +28,52 @@
 
 ## 稳定发布长期跟踪（推荐稳定性）
 
-- 目标：`stable` 分支始终指向最新发布标签，保证可复现；所有开发分支从 `stable` 派生。
-- 初次建立：
-  - `git fetch upstream --tags`
-  - `git branch -f stable <最新发布标签>`
-  - `git push --force-with-lease origin stable`
-- 日常更新（上游有新发布时）：
-  - `git fetch upstream --tags`
-  - 确认最新标签，如 `latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | head -n1)`
-  - 快进 `stable`：`git branch -f stable "$latest"`
-  - 推送：`git push --force-with-lease origin stable`
-- 开发基线：`git checkout -b feature/x stable`；跟进新发布时，切新分支或将现有分支变基到更新后的 `stable`。
-- 防篡改（可选）：在 fork 上再打镜像标签（如 `fork-v2026.2.23`）指向同一 commit，防上游重打标签。
-- 自动化示例（本地脚本，定时执行）：
-  ```bash
-  #!/usr/bin/env bash
-  set -euo pipefail
-  git fetch upstream --tags
-  latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | head -n1)
-  [ -z "$latest" ] && { echo "no tag found"; exit 1; }
-  git branch -f stable "$latest"
-  git push --force-with-lease origin stable
-  ```
+- 目标：`stable` 分支始终指向“最新正式发布标签”（排除 beta），保证可复现；所有开发分支从 `stable` 派生。
+- 适用：不想引入未发布改动，只吃正式版；便于回溯和审计。
+- 发布标签定义：`vYYYY.M.D` 系列；如要严格跳过 beta，用过滤命令排除 `beta`。
+
+### 初次建立
+
+1. 拉标签：`git fetch upstream --tags`
+2. 取最新正式标签：`latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | rg -v beta | head -n1)`
+3. 创建/快进 `stable`：`git branch -f stable "$latest"`
+4. 推送到 fork：`git push --force-with-lease origin stable`
+5. 记录当前发布哈希（可选）：`git rev-parse "$latest"` 便于审计或防重打标签
+
+### 日常更新（发现新发布时）
+
+1. `git fetch upstream --tags`
+2. 获取最新正式标签（同上命令）
+3. 快进 `stable`：`git branch -f stable "$latest"`
+4. 推送：`git push --force-with-lease origin stable`
+5. 验证：`git describe --tags --exact-match stable || git rev-parse stable`
+
+### 开发与升级
+
+- 新开发分支：`git checkout -b feature/x stable`
+- 新发布出现后：
+  - 更稳妥：基于更新后的 `stable` 重建分支。
+  - 或：在原分支上 `git rebase stable`。
+- 禁止把 `upstream/main` 直接合入/变基到 `stable`，避免未发布改动进入稳定线。
+
+### 防篡改与回滚（可选）
+
+- 镜像标签到 fork：`git tag fork-$latest $latest && git push --force-with-lease origin fork-$latest`
+- 记录哈希到文件（示例）：`git rev-parse "$latest" >> RELEASE_HASHES.md`
+- 如需回滚 `stable` 到旧发布：`git branch -f stable <旧标签或哈希> && git push --force-with-lease origin stable`
+
+### 自动化示例（跳过 beta）
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+git fetch upstream --tags
+latest=$(git tag --sort=-creatordate | rg '^v2026\\.' | rg -v beta | head -n1)
+[ -z "$latest" ] && { echo "no release tag found"; exit 0; }
+git branch -f stable "$latest"
+git push --force-with-lease origin stable
+git describe --tags --exact-match stable || git rev-parse stable
+```
 
 ## 常用速查
 
