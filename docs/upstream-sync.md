@@ -56,6 +56,14 @@
   - 或：在原分支上 `git rebase stable`。
 - 禁止把 `upstream/main` 直接合入/变基到 `stable`，避免未发布改动进入稳定线。
 
+### 已有分支如何跟随新标签
+
+- `stable` 快进不会自动带上你旧分支的提交。
+- 方案 1（推荐）：在原分支上执行 `git fetch upstream --tags`（确保标签最新），`git rebase stable`，把你的提交移动到新标签之上，保持线性历史。
+- 方案 2（安全搬运）：从新 `stable` 开新分支 `git checkout -b feature/x-new stable`，对旧分支的提交使用 `git cherry-pick <old-commit-range>`；适合冲突多或想保留旧分支备份。
+- 方案 3（暂不升级）：让旧分支留在旧标签基线；需要时再用方案 1/2 搬运。
+- 任一方案后：跑必要测试，再 `git push --force-with-lease origin <branch>`。
+
 ### 防篡改与回滚（可选）
 
 - 镜像标签到 fork：`git tag fork-$latest $latest && git push --force-with-lease origin fork-$latest`
